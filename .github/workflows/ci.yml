@@ -53,16 +53,46 @@ jobs:
           name: auditoria-bandit
           path: auditoria_bandit.txt
 
-  trivy:
-    name: Trivy - imagen Docker
+  build-push:
+    name: Build y push de imagen
     runs-on: ubuntu-latest
     needs: [test, bandit]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ env.IMAGE }}
+    env:
+      IMAGE: ghcr.io/mariaferr-dev/technova-api:latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Construir imagen
-        run: docker build -t technova-api:${{ github.sha }} .
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login a GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build y push
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ghcr.io/mariaferr-dev/technova-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  trivy:
+    name: Trivy - imagen Docker
+    runs-on: ubuntu-latest
+    needs: [build-push]
+    steps:
+      - name: Pull imagen
+        run: docker pull ghcr.io/mariaferr-dev/technova-api:latest
 
       - name: Escanear imagen
         run: >-
@@ -73,17 +103,20 @@ jobs:
           --exit-code 1
           --ignore-unfixed
           --severity CRITICAL,HIGH
-          technova-api:${{ github.sha }}
+          ghcr.io/mariaferr-dev/technova-api:latest
 
   deploy:
     name: Desplegar en EC2
     runs-on: ubuntu-latest
-    needs: [test, bandit, trivy]
+    needs: [build-push, trivy]
     environment: HOST
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Desplegar por SSH
         uses: appleboy/ssh-action@v1.2.2
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.HOST }}
           username: ubuntu
@@ -94,6 +127,7 @@ jobs:
           script: |
             set -e
             app_path=/home/ubuntu/ejercicio-docker-audit
+
             if [ ! -d "$app_path/.git" ]; then
               env_file=/tmp/ejercicio-docker-audit.env
               if [ -f "$app_path/.env" ]; then cp "$app_path/.env" "$env_file"; fi
@@ -101,11 +135,16 @@ jobs:
               git clone https://github.com/MariaFerr-dev/ejercicio-docker-auditmafee.git "$app_path"
               if [ -f "$env_file" ]; then mv "$env_file" "$app_path/.env"; fi
             fi
+
             cd "$app_path"
             git pull --ff-only origin main
 
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            docker pull ghcr.io/mariaferr-dev/technova-api:latest
+
             docker compose up -d db dozzle uptime-kuma
-            docker compose up -d --build api
+            docker compose up -d api
+
             for attempt in 1 2 3 4 5 6; do
               if curl -fsS http://127.0.0.1:5050/health; then
                 echo
@@ -119,3 +158,4 @@ jobs:
               sleep 5
             done
             docker compose ps
+            docker logout ghcr.io || true
