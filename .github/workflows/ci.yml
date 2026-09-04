@@ -80,13 +80,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, bandit, trivy]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: HOST  # ✅ Añade esta línea
     steps:
       - name: Desplegar por SSH
         uses: appleboy/ssh-action@v1.2.2
         with:
-          host: 18.220.234.237
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }} #
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             app_path=/home/ubuntu/ejercicio-docker-audit
             if [ ! -d "$app_path/.git" ]; then
