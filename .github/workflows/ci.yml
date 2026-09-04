@@ -79,6 +79,7 @@ jobs:
     name: Desplegar en EC2
     runs-on: ubuntu-latest
     needs: [test, bandit, trivy]
+    environment: HOST  # ← Añade esta línea
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Desplegar por SSH
