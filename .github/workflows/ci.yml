@@ -89,8 +89,8 @@ jobs:
           username: ubuntu
           port: 22
           key: ${{ secrets.EC2_SSH_KEY }}
-          timeout: 600s            # aumentar el timeout de conexión/setup
-          command_timeout: 30m     # permitir comandos largos en el host
+          timeout: 60s
+          command_timeout: 15m
           script: |
             set -e
             app_path=/home/ubuntu/ejercicio-docker-audit
@@ -104,14 +104,14 @@ jobs:
             cd "$app_path"
             git pull --ff-only origin main
 
-            docker compose pull
-            docker compose up -d --build
-            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            docker compose up -d db dozzle uptime-kuma
+            docker compose up -d --build api
+            for attempt in 1 2 3 4 5 6; do
               if curl -fsS http://127.0.0.1:5050/health; then
                 echo
                 break
               fi
-              if [ "$attempt" -eq 10 ]; then
+              if [ "$attempt" -eq 6 ]; then
                 echo "La API no respondió en /health" >&2
                 docker compose logs --tail=100 api >&2 || true
                 exit 1
