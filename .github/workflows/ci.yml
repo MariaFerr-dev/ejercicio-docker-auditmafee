@@ -84,11 +84,19 @@ jobs:
       - name: Desplegar por SSH
         uses: appleboy/ssh-action@v1.2.2
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
+          host: 18.220.234.237
+          username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd "${{ secrets.EC2_APP_PATH }}"
+            app_path=/home/ubuntu/ejercicio-docker-audit
+            if [ ! -d "$app_path/.git" ]; then
+              env_file=/tmp/ejercicio-docker-audit.env
+              if [ -f "$app_path/.env" ]; then cp "$app_path/.env" "$env_file"; fi
+              rm -rf "$app_path"
+              git clone https://github.com/MariaFerr-dev/ejercicio-docker-auditmafee.git "$app_path"
+              if [ -f "$env_file" ]; then mv "$env_file" "$app_path/.env"; fi
+            fi
+            cd "$app_path"
             git pull --ff-only origin main
             docker compose up -d --build
             docker compose ps
