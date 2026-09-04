@@ -86,7 +86,7 @@ jobs:
         with:
           host: 18.220.234.237
           username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.EC2_SSH_KEY }} #
           script: |
             app_path=/home/ubuntu/ejercicio-docker-audit
             if [ ! -d "$app_path/.git" ]; then
