@@ -84,7 +84,7 @@ jobs:
       - name: Desplegar por SSH
         uses: appleboy/ssh-action@v1.2.2
         with:
-          host: 18.220.234.237
+          host: ${{ secrets.HOST }}
           username: ubuntu
           port: 22
           key: ${{ secrets.EC2_SSH_KEY }}
