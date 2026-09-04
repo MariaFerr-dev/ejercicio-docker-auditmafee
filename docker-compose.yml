@@ -1,0 +1,57 @@
+services:
+  api:
+    build: .
+    container_name: api_service
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "${API_PORT:-5050}:5050"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5050/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+    volumes:
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle_service
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: kuma_service
+    restart: always
+    volumes:
+      - kuma_data:/app/data
+    ports:
+      - "3001:3001"
+
+volumes:
+  kuma_data:

@@ -1,0 +1,92 @@
+name: CI - Pruebas y Seguridad
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar pruebas
+        run: pytest -q
+
+  bandit:
+    name: Bandit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Instalar Bandit
+        run: pip install bandit==1.8.6
+
+      - name: Analizar código
+        run: bandit -r app.py -f txt -o auditoria_bandit.txt
+
+      - name: Publicar informe Bandit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auditoria-bandit
+          path: auditoria_bandit.txt
+
+  trivy:
+    name: Trivy - imagen Docker
+    runs-on: ubuntu-latest
+    needs: [test, bandit]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Construir imagen
+        run: docker build -t technova-api:${{ github.sha }} .
+
+      - name: Escanear imagen
+        uses: aquasecurity/trivy-action@0.34.0
+        with:
+          image-ref: technova-api:${{ github.sha }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+
+  deploy:
+    name: Desplegar en EC2
+    runs-on: ubuntu-latest
+    needs: [test, bandit, trivy]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Desplegar por SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd "${{ secrets.EC2_APP_PATH }}"
+            git pull --ff-only origin main
+            docker compose up -d --build
+            docker compose ps

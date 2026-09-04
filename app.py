@@ -1,35 +1,58 @@
+import os
+from flask import Flask, request, jsonify
 import pymysql
-import random
-from flask import Flask, request
 
 app = Flask(__name__)
 
-# 🚨 FALLO 1: Credenciales de BD en texto plano (Bandit / Gitleaks)
-DB_HOST = "servidor-bd-ejemplo"
-DB_USER = "root"
-DB_PASS = "admin_adso_2026_secreto"
-DB_NAME = "legacydb"
+DB_HOST = os.getenv("DB_HOST", "db")
+DB_USER = os.getenv("DB_USER", "appuser")
+DB_PASS = os.getenv("DB_PASS", "app_password")
+DB_NAME = os.getenv("DB_NAME", "legacydb")
 
-@app.route("/")
+def get_connection():
+    return pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASS,
+        database=DB_NAME,
+        cursorclass=pymysql.cursors.DictCursor,
+        connect_timeout=5,
+    )
+
+@app.get("/")
 def home():
-    try:
-        conn = pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-        conn.close()
-        return "<h1>API Legacy TechNova - Funcionando (Más o menos)</h1>"
-    except Exception as e:
-        return f"<h1>Sistema Caído</h1><p>{e}</p>", 500
+    return jsonify({
+        "service": "TechNova API",
+        "status": "running",
+        "version": "2.0.0"
+    }), 200
 
-@app.route("/buscar")
+@app.get("/health")
+def health_check():
+    return jsonify({"status": "ok"}), 200
+
+@app.get("/buscar")
 def buscar_usuario():
     usuario_id = request.args.get("id", "1")
-    query_peligrosa = "SELECT * FROM usuarios WHERE id = " + usuario_id
-    return f"Simulando consulta: {query_peligrosa}"
 
-@app.route("/health")
-def health_check():
-    if random.random() < 0.3:
-        resultado = 1 / 0 
-    return "OK", 200
+    try:
+        usuario_id = int(usuario_id)
+    except (TypeError, ValueError):
+        return jsonify({"error": "El id debe ser un número entero"}), 400
+
+    try:
+        conn = get_connection()
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, nombre FROM usuarios WHERE id = %s",
+                (usuario_id,)
+            )
+            usuario = cursor.fetchone()
+        conn.close()
+        return jsonify({"usuario": usuario}), 200
+    except pymysql.MySQLError as exc:
+        app.logger.error("Error de base de datos: %s", exc)
+        return jsonify({"error": "No fue posible consultar la base de datos"}), 503
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5050, debug=True)
+    app.run(host=os.getenv("APP_HOST"), port=5050)
