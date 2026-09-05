@@ -1,70 +1,32 @@
-# Ejercicio Docker Audit — versión corregida
+-- Auditoría
 
-Proyecto académico para practicar auditoría, arquitectura Docker, CI/CD y despliegue.
+## Tabla de hallazgos
 
-## Fases
+| ID | Hallazgo inicial | Riesgo | Evidencia | Corrección aplicada |
+|---|---|---|---|---|
+| AUD-001 | Credenciales de BD escritas en `app.py` | Alto | `DB_USER`/`DB_PASS` en código original | Variables de entorno mediante `.env` |
+| AUD-002 | Consulta SQL concatenada con entrada del usuario | Crítico | `/buscar` en código original | Validación de entero + consulta parametrizada |
+| AUD-003 | `/health` podía fallar aleatoriamente | Alto | `random` y división por cero | Endpoint determinista |
+| AUD-004 | Python 3.8 en imagen base | Medio | `Dockerfile` original | Python 3.12-slim |
+| AUD-005 | Dependencias antiguas | Medio | `Dockerfile` original | `requirements.txt` con versiones actuales del proyecto |
+| AUD-006 | Ejecución como root en contenedor | Medio | `Dockerfile` original | Usuario sin privilegios |
+| AUD-007 | Sin orquestación local | Medio | No existía Compose | `docker-compose.yml` |
+| AUD-008 | Sin automatización de pruebas/seguridad | Alto | No existía workflow | GitHub Actions: Pytest, Bandit y Trivy |
 
-1. Auditoría
-2. Arquitectura
-3. Pipeline
-4. Despliegue en EC2
+## Resultado
 
-## Ejecución local
+Los hallazgos iniciales fueron corregidos y las comprobaciones quedan automatizadas en `.github/workflows/ci.yml`:
 
-```bash
-cp .env.example .env
-nano .env
-docker compose build
-docker compose up -d
-docker compose ps
-curl http://localhost:5050/health
-```
+- Pytest valida los endpoints principales.
+- Bandit analiza el código de aplicación y publica `auditoria_bandit.txt` como artefacto.
+- Trivy bloquea imágenes con vulnerabilidades `HIGH` o `CRITICAL` corregibles.
+- El despliegue a EC2 se ejecuta solo desde `main` y requiere secretos de GitHub.
 
-La API escucha en `5050`, Dozzle en `8080` y Uptime Kuma en `3001`. La base de datos no se publica fuera de la red de Compose.
-
-Si el puerto `5050` ya está ocupado en desarrollo, puedes iniciar la API en otro puerto externo: `$env:API_PORT=5051; docker compose up -d --build`.
-
-## Pruebas
+La auditoría local debe excluir `.venv`, porque es una copia de dependencias de terceros:
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pytest -q
 bandit -r app.py -f txt -o auditoria_bandit.txt
 ```
-
-El archivo `.env` contiene secretos y no debe subirse al repositorio.
-
-## Arquitectura y despliegue en EC2
-
-La arquitectura local usa cuatro servicios: API Flask, MySQL, Dozzle y Uptime Kuma. En EC2, Nginx se instala en el host y reenvía estos subdominios:
-
-| Subdominio | Archivo | Servicio local |
-|---|---|---|
-| `api.TU-DOMINIO.com` | `nginx/api.conf.example` | `127.0.0.1:5050` |
-| `docker.TU-DOMINIO.com` | `nginx/docker.conf.example` | `127.0.0.1:8080` |
-| `kuma.TU-DOMINIO.com` | `nginx/kuma.conf.example` | `127.0.0.1:3001` |
-
-Con el dominio DuckDNS actual se usa `nginx/desplieguea.conf.example`: la API queda en `/`, Dozzle en `/docker/` y Uptime Kuma en `/kuma/`.
-
-En la instancia EC2:
-
-1. Copia `.env.example` a `.env` y cambia todas las contraseñas.
-2. Ejecuta `docker compose up -d --build`.
-3. Instala Nginx, copia los tres ejemplos a `sites-available`, reemplaza `TU-DOMINIO.com` y activa los sitios.
-4. Abre solo `80` y `443` en el Security Group; restringe SSH a tu IP.
-5. Ejecuta Certbot para emitir certificados HTTPS y recarga Nginx.
-
-Para este dominio concreto:
-
-```bash
-sudo cp nginx/desplieguea.conf.example /etc/nginx/sites-available/desplieguea.conf
-sudo ln -sf /etc/nginx/sites-available/desplieguea.conf /etc/nginx/sites-enabled/desplieguea.conf
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d despliegueaudi.duckdns.org
-```
-
-En AWS Security Group permite TCP `80` y `443` desde `0.0.0.0/0`; mantén `3306`, `5050`, `8080` y `3001` sin exposición pública.
-
-El workflow de GitHub Actions despliega automáticamente al hacer push a `main` cuando existen los secretos `EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY` y `EC2_APP_PATH`.
+- http://api-despliegueaudi.duckdns.org/
+- http://dockerdespliegueaudi.duckdns.org/
+- http://kumadespliegueaudi.duckdns.org/dashboard
