@@ -118,9 +118,9 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
         with:
-          host: 3.150.121.34
-          username: ubuntu
-          port: 22
+          host: "3.150.121.34"
+          username: "ubuntu"
+          port: "22"
           key: ${{ secrets.EC2_SSH_KEY }}
           timeout: 60s
           command_timeout: 15m
