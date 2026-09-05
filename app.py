@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 import pymysql
 
 app = Flask(__name__)
@@ -30,6 +30,10 @@ def home():
 @app.get("/health")
 def health_check():
     return jsonify({"status": "ok"}), 200
+
+@app.get("/dashboard")
+def dashboard_redirect():
+    return redirect("/kuma/dashboard", code=302)
 
 @app.get("/buscar")
 def buscar_usuario():
