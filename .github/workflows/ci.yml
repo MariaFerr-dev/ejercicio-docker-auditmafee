@@ -112,50 +112,37 @@ jobs:
     environment: HOST
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - name: Desplegar por SSH
-        uses: appleboy/ssh-action@v1.2.2
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_USER: ${{ github.actor }}
+      - name: Cargar clave SSH
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          host: "3.150.121.34"
-          username: "ubuntu"
-          port: "22"
-          key: ${{ secrets.EC2_SSH_KEY }}
-          timeout: 60s
-          command_timeout: 15m
-          script: |
-            set -e
-            app_path=/home/ubuntu/ejercicio-docker-audit
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-            if [ ! -d "$app_path/.git" ]; then
-              env_file=/tmp/ejercicio-docker-audit.env
-              if [ -f "$app_path/.env" ]; then cp "$app_path/.env" "$env_file"; fi
-              rm -rf "$app_path"
-              git clone https://github.com/MariaFerr-dev/ejercicio-docker-auditmafee.git "$app_path"
-              if [ -f "$env_file" ]; then mv "$env_file" "$app_path/.env"; fi
+      - name: Desplegar por SSH nativo
+        run: |
+          ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 ubuntu@3.150.121.34 'bash -se' <<'REMOTE'
+          set -e
+          app_path=/home/ubuntu/ejercicio-docker-audit
+          if [ ! -d "$app_path/.git" ]; then
+            env_file=/tmp/ejercicio-docker-audit.env
+            if [ -f "$app_path/.env" ]; then cp "$app_path/.env" "$env_file"; fi
+            rm -rf "$app_path"
+            git clone https://github.com/MariaFerr-dev/ejercicio-docker-auditmafee.git "$app_path"
+            if [ -f "$env_file" ]; then mv "$env_file" "$app_path/.env"; fi
+          fi
+          cd "$app_path"
+          git pull --ff-only origin main
+          docker compose up -d db dozzle uptime-kuma
+          docker compose up -d --build api
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsS http://127.0.0.1:5050/health; then
+              echo
+              break
             fi
-
-            cd "$app_path"
-            git pull --ff-only origin main
-
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-            docker pull ghcr.io/mariaferr-dev/technova-api:latest
-
-            docker compose up -d db dozzle uptime-kuma
-            docker compose up -d api
-
-            for attempt in 1 2 3 4 5 6; do
-              if curl -fsS http://127.0.0.1:5050/health; then
-                echo
-                break
-              fi
-              if [ "$attempt" -eq 6 ]; then
-                echo "La API no respondió en /health" >&2
-                docker compose logs --tail=100 api >&2 || true
-                exit 1
-              fi
-              sleep 5
-            done
-            docker compose ps
-            docker logout ghcr.io || true
+            if [ "$attempt" -eq 6 ]; then
+              docker compose logs --tail=100 api >&2 || true
+              exit 1
+            fi
+            sleep 5
+          done
+          docker compose ps
+          REMOTE
