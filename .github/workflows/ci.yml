@@ -131,6 +131,12 @@ jobs:
           fi
           cd "$app_path"
           git pull --ff-only origin main
+          if [ "$(swapon --show --noheadings | wc -l)" -eq 0 ] && [ ! -f /swapfile ]; then
+            sudo fallocate -l 1G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile >/dev/null
+            sudo swapon /swapfile
+          fi
           docker compose up -d db dozzle uptime-kuma
           docker compose up -d --build api
           for attempt in 1 2 3 4 5 6; do

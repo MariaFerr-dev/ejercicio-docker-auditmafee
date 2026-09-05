@@ -20,6 +20,10 @@ services:
     image: mysql:8.0
     container_name: mysql_db
     restart: always
+    command:
+      - --innodb-buffer-pool-size=64M
+      - --max-connections=50
+      - --performance-schema=OFF
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
@@ -32,6 +36,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+      start_period: 60s
 
 
   dozzle:
